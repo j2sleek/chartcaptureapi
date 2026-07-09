@@ -14,6 +14,22 @@ export async function capture(data: CaptureRequest) {
       },
     });
 
+    async function navigate(page: Page, url: string) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await page.goto(url, {
+            waitUntil: "networkidle",
+            timeout: 30000
+          });
+          return;
+        } catch (error) {
+          if (attempt === 3) {
+            throw error;
+          }
+        }
+      }
+    }
+
     try {
       const page = await context.newPage();
 
