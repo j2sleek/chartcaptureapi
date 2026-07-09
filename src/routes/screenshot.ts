@@ -8,11 +8,28 @@ export default async function (app: FastifyInstance) {
 
         const body = CaptureSchema.parse(request.body);
 
-        const image = await capture(body);
+        try {
+           const image = await capture(body);
 
-        reply
-            .type(`image/${body.format}`)
-            .send(image);
+           return reply
+             .type(`image/${body.format}`)
+             .send(image);
+
+        } catch (error: any) {
+          request.log.error(error);
+
+          if (error.name === "TimeoutError") {
+            return reply.status(504).send({
+              success: false,
+              error: "CAPTURE_TIMEOUT"
+            });
+          }
+
+          return reply.status(500).send({
+            success: false,
+            error: "SCREENSHOT_FAILED"
+          });
+        }
 
     });
 
