@@ -1,0 +1,39 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: push to GitHub, then in Render "New +" → "Blueprint" and point at this repo.
+services:
+  - type: web
+    name: chartcapture-api
+    runtime: docker
+    plan: starter # 512 MB — tight for Chromium; bump to "standard" (2 GB) if OOM
+    branch: main
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    # Liveness only. /health is 200 as soon as the process is up; /health/ready
+    # returns 503 for ~30s while the page pool warms, which would fail the probe.
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Render injects PORT; the app already binds 0.0.0.0:$PORT. Do not hardcode.
+
+      # ── Pool sizing tuned for 512 MB (one browser, one warm page) ──────────
+      - key: BROWSER_POOL_SIZE
+        value: "1"
+      - key: PAGE_POOL_SIZE
+        value: "1"
+      - key: CAPTURE_CONCURRENCY
+        value: "1"
+      - key: PAGE_MAX_USES
+        value: "100" # recycle sooner to bound memory creep
+
+      # ── Rate limiting ──────────────────────────────────────────────────────
+      - key: RATE_LIMIT_MAX
+        value: "30"
+      - key: RATE_LIMIT_WINDOW
+        value: "1 minute"
+
+      # ── Secret: set the value in the Render dashboard, never in git ─────────
+      - key: API_KEYS
+        sync: false
