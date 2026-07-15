@@ -170,38 +170,107 @@ export interface BatchItemResult {
   error?: { code: string; message: string };
 }
 
+/** Run one batch item to a self-contained result (never throws). */
+async function runBatchItem(
+  request: CaptureRequest,
+  index: number,
+): Promise<BatchItemResult> {
+  try {
+    const result = await capture(request);
+    return {
+      index,
+      success: true,
+      data: {
+        image: result.buffer.toString("base64"),
+        format: result.format,
+        width: result.width,
+        height: result.height,
+        durationMs: result.durationMs,
+        symbol: result.symbol,
+        timeframe: result.timeframe,
+      },
+    };
+  } catch (error) {
+    const code = isAppError(error) ? error.code : "CAPTURE_FAILED";
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { index, success: false, error: { code, message } };
+  }
+}
+
+interface IndexedRequest {
+  request: CaptureRequest;
+  /** Position in the caller's original array (echoed back in the result). */
+  index: number;
+}
+
 /**
- * Process a batch concurrently (bounded by the same queue). One item failing
- * never fails the batch; each result carries its own success/error.
+ * The Coinalyze page a request lands on, used purely as an ordering key. Two
+ * requests sharing a metricPath (same coin + same metric) can reuse a warm
+ * page with no navigation — the expensive part of a capture. Sorting by this
+ * key clusters such requests so consecutive jobs on a page skip the ~15s
+ * re-navigation. Unresolvable requests sort last; they fail fast anyway.
+ */
+function pageKey(request: CaptureRequest): string {
+  try {
+    return resolveTarget(request.symbol, request.metric).metricPath;
+  } catch {
+    return "￿";
+  }
+}
+
+/** Attach the original index, then cluster by target page for reuse. */
+export function orderByPage(requests: CaptureRequest[]): IndexedRequest[] {
+  return requests
+    .map((request, index) => ({ request, index }))
+    .sort((a, b) => pageKey(a.request).localeCompare(pageKey(b.request)));
+}
+
+/**
+ * Process a batch concurrently (bounded by the same queue). Items are ordered
+ * to maximize warm-page reuse. One item failing never fails the batch; each
+ * result carries its own success/error. Results are returned in the caller's
+ * original request order.
  */
 export async function captureBatch(
   requests: CaptureRequest[],
 ): Promise<BatchItemResult[]> {
-  return Promise.all(
-    requests.map(async (request, index): Promise<BatchItemResult> => {
-      try {
-        const result = await capture(request);
-        return {
-          index,
-          success: true,
-          data: {
-            image: result.buffer.toString("base64"),
-            format: result.format,
-            width: result.width,
-            height: result.height,
-            durationMs: result.durationMs,
-            symbol: result.symbol,
-            timeframe: result.timeframe,
-          },
-        };
-      } catch (error) {
-        const code = isAppError(error) ? error.code : "CAPTURE_FAILED";
-        const message =
-          error instanceof Error ? error.message : "Unknown error";
-        return { index, success: false, error: { code, message } };
-      }
-    }),
+  const ordered = orderByPage(requests);
+  const results = await Promise.all(
+    ordered.map(({ request, index }) => runBatchItem(request, index)),
   );
+  return results.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Stream batch results as each capture completes, in completion order (not
+ * request order — clients key off `index`). Yielding incrementally means the
+ * HTTP response produces bytes continuously, so it never trips an idle/gateway
+ * timeout the way a buffer-everything batch does, and the UI can fill in
+ * progressively.
+ */
+export async function* captureBatchStream(
+  requests: CaptureRequest[],
+): AsyncGenerator<BatchItemResult> {
+  const ordered = orderByPage(requests);
+
+  // Kick every item off at once; the PQueue still gates real concurrency.
+  // Each promise is tagged with a slot id so we can remove it as it settles.
+  const pending = new Map<
+    number,
+    Promise<{ slot: number; result: BatchItemResult }>
+  >();
+  ordered.forEach(({ request, index }, slot) => {
+    pending.set(
+      slot,
+      runBatchItem(request, index).then((result) => ({ slot, result })),
+    );
+  });
+
+  while (pending.size > 0) {
+    const { slot, result } = await Promise.race(pending.values());
+    pending.delete(slot);
+    yield result;
+  }
 }
 
 export function captureQueueStats(): { size: number; pending: number } {

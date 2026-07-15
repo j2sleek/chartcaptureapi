@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { handleBatch, handleCapture } from "../controllers/captureController.js";
+import {
+  handleBatch,
+  handleBatchStream,
+  handleCapture,
+} from "../controllers/captureController.js";
 import { TIMEFRAMES, IMAGE_FORMATS } from "../schemas/capture.js";
 import { SUPPORTED_METRICS, SUPPORTED_SYMBOLS } from "../services/symbols.js";
 
@@ -76,6 +80,32 @@ export default async function captureRoutes(
       },
     },
     handleBatch,
+  );
+
+  app.post(
+    "/capture/batch/stream",
+    {
+      schema: {
+        tags: ["capture"],
+        summary: "Stream multiple chart captures as newline-delimited JSON",
+        description:
+          "Same body as /capture/batch, but responds with " +
+          "application/x-ndjson: a `meta` line first, one `result` line per " +
+          "capture as it finishes (in completion order — use each line's " +
+          "`index` to map back to the request), then a `done` summary. " +
+          "Preferred for large batches: bytes flow continuously so the " +
+          "request never hits a gateway/client idle timeout.",
+        body: {
+          type: "object",
+          required: ["items"],
+          additionalProperties: false,
+          properties: {
+            items: { type: "array", items: captureBody, minItems: 1 },
+          },
+        },
+      },
+    },
+    handleBatchStream,
   );
 
   app.get(

@@ -29,14 +29,22 @@ const EnvSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
 
-  /** Number of Chromium instances to launch. Each hosts several pages. */
-  BROWSER_POOL_SIZE: z.coerce.number().int().min(1).max(16).default(2),
+  /**
+   * Number of Chromium instances to launch. One process hosting several pages
+   * is the most memory-efficient layout; add browsers only when you have RAM
+   * to spare (each Chromium base costs ~120-180 MB before any pages).
+   */
+  BROWSER_POOL_SIZE: z.coerce.number().int().min(1).max(16).default(1),
 
-  /** Total pre-warmed chart pages kept ready across all browsers. */
-  PAGE_POOL_SIZE: z.coerce.number().int().min(1).max(64).default(4),
+  /**
+   * Total pre-warmed chart pages kept ready across all browsers. Default 3 is
+   * tuned for a 1 GB instance (~1 browser + 3 warm Coinalyze pages ≈ 650-820
+   * MB RSS). Drop to 1 for 512 MB; raise on larger plans.
+   */
+  PAGE_POOL_SIZE: z.coerce.number().int().min(1).max(64).default(3),
 
   /** Max capture jobs executed at once (should be <= PAGE_POOL_SIZE). */
-  CAPTURE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  CAPTURE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(3),
 
   /** Recycle a warm page after this many captures to avoid memory creep. */
   PAGE_MAX_USES: z.coerce.number().int().min(1).max(10000).default(200),
