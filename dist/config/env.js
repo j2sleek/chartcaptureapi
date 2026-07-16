@@ -21,12 +21,20 @@ const EnvSchema = z.object({
     LOG_LEVEL: z
         .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
         .default("info"),
-    /** Number of Chromium instances to launch. Each hosts several pages. */
-    BROWSER_POOL_SIZE: z.coerce.number().int().min(1).max(16).default(2),
-    /** Total pre-warmed chart pages kept ready across all browsers. */
-    PAGE_POOL_SIZE: z.coerce.number().int().min(1).max(64).default(4),
+    /**
+     * Number of Chromium instances to launch. One process hosting several pages
+     * is the most memory-efficient layout; add browsers only when you have RAM
+     * to spare (each Chromium base costs ~120-180 MB before any pages).
+     */
+    BROWSER_POOL_SIZE: z.coerce.number().int().min(1).max(16).default(1),
+    /**
+     * Total pre-warmed chart pages kept ready across all browsers. Default 3 is
+     * tuned for a 1 GB instance (~1 browser + 3 warm Coinalyze pages ≈ 650-820
+     * MB RSS). Drop to 1 for 512 MB; raise on larger plans.
+     */
+    PAGE_POOL_SIZE: z.coerce.number().int().min(1).max(64).default(3),
     /** Max capture jobs executed at once (should be <= PAGE_POOL_SIZE). */
-    CAPTURE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+    CAPTURE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(3),
     /** Recycle a warm page after this many captures to avoid memory creep. */
     PAGE_MAX_USES: z.coerce.number().int().min(1).max(10000).default(200),
     /** Overall per-capture budget in ms (queue wait + execution). */
@@ -37,8 +45,13 @@ const EnvSchema = z.object({
     WIDGET_TIMEOUT: z.coerce.number().int().min(1000).max(60000).default(40000),
     /** Settle time after mutations before screenshotting, ms. */
     RENDER_SETTLE_MS: z.coerce.number().int().min(0).max(10000).default(1200),
-    /** Max items allowed in a single POST /capture/batch request. */
-    MAX_BATCH: z.coerce.number().int().min(1).max(100).default(20),
+    /**
+     * Max items allowed in a single batch request. The buffered /capture/batch
+     * should stay modest (it returns nothing until every item finishes), but the
+     * streaming endpoint emits results incrementally and has no idle-timeout
+     * pressure, so larger sets are fine there. Default raised to 60.
+     */
+    MAX_BATCH: z.coerce.number().int().min(1).max(200).default(60),
     /**
      * Comma-separated API keys. When empty, auth is DISABLED (dev convenience).
      * In production supply at least one key.
