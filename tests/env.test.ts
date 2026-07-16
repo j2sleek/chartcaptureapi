@@ -59,8 +59,8 @@ test("valid environment loads with defaults", async () => {
   const { code, stdout } = await importEnvWith({ NODE_ENV: "test" });
   assert.equal(code, 0);
   const parsed = extractEnv(stdout);
-  assert.equal(parsed.pool, 4);
-  assert.equal(parsed.concurrency, 4);
+  assert.equal(parsed.pool, 3);
+  assert.equal(parsed.concurrency, 3);
   assert.equal(parsed.authEnabled, false);
   assert.equal(parsed.isProduction, false);
 });

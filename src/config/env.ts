@@ -61,8 +61,13 @@ const EnvSchema = z.object({
   /** Settle time after mutations before screenshotting, ms. */
   RENDER_SETTLE_MS: z.coerce.number().int().min(0).max(10000).default(1200),
 
-  /** Max items allowed in a single POST /capture/batch request. */
-  MAX_BATCH: z.coerce.number().int().min(1).max(100).default(20),
+  /**
+   * Max items allowed in a single batch request. The buffered /capture/batch
+   * should stay modest (it returns nothing until every item finishes), but the
+   * streaming endpoint emits results incrementally and has no idle-timeout
+   * pressure, so larger sets are fine there. Default raised to 60.
+   */
+  MAX_BATCH: z.coerce.number().int().min(1).max(200).default(60),
 
   /**
    * Comma-separated API keys. When empty, auth is DISABLED (dev convenience).
