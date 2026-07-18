@@ -39,6 +39,20 @@ export class PoolUnavailableError extends AppError {
     code = "POOL_UNAVAILABLE";
     statusCode = 503;
 }
+/**
+ * The upstream site served an anti-bot block (HTTP 403 or a Cloudflare
+ * challenge/interstitial) instead of the chart page. Distinct from a slow
+ * load so logs make the cause unambiguous. Maps to 502.
+ */
+export class BotBlockedError extends AppError {
+    code = "BOT_BLOCKED";
+    statusCode = 502;
+    status;
+    constructor(message, options) {
+        super(message, options);
+        this.status = options?.status;
+    }
+}
 /** Requested an unknown indicator or symbol. Maps to 400. */
 export class UnknownResourceError extends AppError {
     code = "UNKNOWN_RESOURCE";

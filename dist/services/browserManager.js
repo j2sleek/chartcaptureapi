@@ -27,16 +27,59 @@ const LAUNCH_ARGS = [
 ];
 /**
  * Injected into every page before any site script runs. Masks the most common
- * headless tells so the anti-bot challenge resolves automatically.
+ * headless tells so the anti-bot challenge resolves automatically. Kept in one
+ * function because addInitScript serialises it and runs it in the page context
+ * (no closure over Node-side variables).
  */
 function stealthInit() {
-    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    // `navigator.webdriver` — the single strongest headless tell. Delete it from
+    // the prototype so it reads as undefined and the property is truly absent.
+    try {
+        delete Navigator.prototype.webdriver;
+    }
+    catch {
+        /* ignore */
+    }
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
     Object.defineProperty(navigator, "languages", {
         get: () => ["en-US", "en"],
     });
+    // Real Chrome exposes a populated plugins/mimeTypes array; headless is empty.
+    const fakePlugins = [
+        { name: "Chrome PDF Plugin" },
+        { name: "Chrome PDF Viewer" },
+        { name: "Native Client" },
+    ];
     Object.defineProperty(navigator, "plugins", {
-        get: () => [1, 2, 3, 4, 5],
+        get: () => fakePlugins,
     });
+    Object.defineProperty(navigator, "mimeTypes", {
+        get: () => [{ type: "application/pdf" }],
+    });
+    // Headed Chrome always has window.chrome; headless often lacks it.
+    if (!window.chrome) {
+        window.chrome = { runtime: {} };
+    }
+    // Notification permission query returns "denied" under headless with no
+    // prompt UI — a known fingerprinting signal. Normalise it.
+    const originalQuery = window.navigator.permissions?.query;
+    if (originalQuery) {
+        window.navigator.permissions.query = ((parameters) => parameters.name === "notifications"
+            ? Promise.resolve({
+                state: Notification.permission,
+            })
+            : originalQuery.call(window.navigator.permissions, parameters));
+    }
+    // Spoof the WebGL vendor/renderer strings to a plausible consumer GPU
+    // instead of the SwiftShader software renderer headless reports.
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function (parameter) {
+        if (parameter === 37445)
+            return "Intel Inc."; // UNMASKED_VENDOR_WEBGL
+        if (parameter === 37446)
+            return "Intel Iris OpenGL Engine"; // UNMASKED_RENDERER_WEBGL
+        return getParameter.call(this, parameter);
+    };
 }
 /**
  * Owns the Chromium processes and hands out fresh pages inside stealth
@@ -79,6 +122,14 @@ export class BrowserManager {
             locale: env.LOCALE,
             timezoneId: env.TIMEZONE,
             deviceScaleFactor: 1,
+            // Client-hint headers consistent with the spoofed Chrome UA. A missing or
+            // mismatched Sec-CH-UA against a Chrome UA is a cheap anti-bot tell.
+            extraHTTPHeaders: {
+                "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "accept-language": `${env.LOCALE},en;q=0.9`,
+            },
         });
         await context.addInitScript(stealthInit);
         return context;

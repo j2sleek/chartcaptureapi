@@ -1,11 +1,46 @@
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
-import { PoolUnavailableError } from "../utils/errors.js";
+import { BotBlockedError, PoolUnavailableError } from "../utils/errors.js";
 import { browserManager } from "./browserManager.js";
 import { waitForWidgetReady } from "./tradingview.js";
 const log = logger.child({ module: "pagePool" });
+/**
+ * Title/body markers of a Cloudflare (or similar) anti-bot interstitial. When
+ * the upstream serves one of these, the chart bootstrap never runs and
+ * `waitForWidgetReady` would otherwise time out with a misleading error — so we
+ * detect it up front and fail fast with a {@link BotBlockedError}.
+ */
+const CHALLENGE_MARKERS = [
+    "just a moment",
+    "checking your browser",
+    "cf-browser-verification",
+    "challenge-platform",
+    "attention required",
+    "verify you are human",
+];
 function warmupUrl(metricPath) {
     return `${env.COINALYZE_BASE}${metricPath}`;
+}
+/**
+ * Navigate a page to a Coinalyze metric URL and assert we actually landed on
+ * the chart page (not an anti-bot block). Throws {@link BotBlockedError} on a
+ * 4xx/5xx document response or a recognised challenge interstitial, so the
+ * cause is unambiguous in logs instead of surfacing as a widget timeout.
+ */
+async function navigateToMetric(page, metricPath) {
+    const url = warmupUrl(metricPath);
+    const response = await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: env.NAV_TIMEOUT,
+    });
+    const status = response?.status();
+    if (status !== undefined && status >= 400) {
+        throw new BotBlockedError(`Upstream returned HTTP ${status} for ${metricPath} (likely an IP/anti-bot block).`, { status });
+    }
+    const title = (await page.title()).toLowerCase();
+    if (CHALLENGE_MARKERS.some((marker) => title.includes(marker))) {
+        throw new BotBlockedError(`Upstream served an anti-bot challenge for ${metricPath} (title: "${title}").`, status !== undefined ? { status } : undefined);
+    }
 }
 /**
  * Maintains a fixed set of warm chart pages. Acquiring a page returns one that
@@ -47,10 +82,7 @@ export class PagePool {
         page.setDefaultNavigationTimeout(env.NAV_TIMEOUT);
         page.setDefaultTimeout(env.WIDGET_TIMEOUT);
         const metric = env.WARMUP_PATH;
-        await page.goto(warmupUrl(metric), {
-            waitUntil: "domcontentloaded",
-            timeout: env.NAV_TIMEOUT,
-        });
+        await navigateToMetric(page, metric);
         await waitForWidgetReady(page);
         return { page, uses: 0, loadedMetric: metric };
     }
@@ -62,10 +94,7 @@ export class PagePool {
     async ensureMetric(slot, metricPath) {
         if (slot.loadedMetric === metricPath)
             return;
-        await slot.page.goto(warmupUrl(metricPath), {
-            waitUntil: "domcontentloaded",
-            timeout: env.NAV_TIMEOUT,
-        });
+        await navigateToMetric(slot.page, metricPath);
         await waitForWidgetReady(slot.page);
         slot.loadedMetric = metricPath;
     }
