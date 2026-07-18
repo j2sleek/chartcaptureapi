@@ -4,7 +4,7 @@ import {
   type BrowserContext,
   type Page,
 } from "playwright";
-import { env } from "../config/env.js";
+import { env, proxyConfig } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 
 const log = logger.child({ module: "browserManager" });
@@ -122,6 +122,11 @@ export class BrowserManager {
     if (this.initialized) return;
     this.initialized = true;
 
+    if (proxyConfig) {
+      // Log the proxy server only (never username/password).
+      log.info({ proxy: proxyConfig.server }, "Egress proxy enabled.");
+    }
+
     for (let i = 0; i < env.BROWSER_POOL_SIZE; i++) {
       this.managed.push(await this.spawn(i));
     }
@@ -153,6 +158,9 @@ export class BrowserManager {
       locale: env.LOCALE,
       timezoneId: env.TIMEZONE,
       deviceScaleFactor: 1,
+      // Optional residential/ISP proxy to escape datacenter-IP anti-bot blocks.
+      // Omitted entirely when unset so egress stays direct.
+      ...(proxyConfig ? { proxy: proxyConfig } : {}),
       // Client-hint headers consistent with the spoofed Chrome UA. A missing or
       // mismatched Sec-CH-UA against a Chrome UA is a cheap anti-bot tell.
       extraHTTPHeaders: {

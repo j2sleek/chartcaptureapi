@@ -33,6 +33,7 @@ async function importEnvWith(
       authEnabled: m.authEnabled,
       isProduction: m.isProduction,
       keys: m.env.API_KEYS,
+      proxy: m.proxyConfig ?? null,
     }) + "<<<END>>>");
   });`;
 
@@ -86,6 +87,49 @@ test("CAPTURE_CONCURRENCY is clamped to PAGE_POOL_SIZE", async () => {
   const parsed = extractEnv(stdout);
   assert.equal(parsed.pool, 2);
   assert.equal(parsed.concurrency, 2);
+});
+
+test("no proxy configured by default", async () => {
+  const { code, stdout } = await importEnvWith({ NODE_ENV: "test" });
+  assert.equal(code, 0);
+  assert.equal(extractEnv(stdout).proxy, null);
+});
+
+test("PROXY_SERVER with inline credentials is split into fields", async () => {
+  const { code, stdout } = await importEnvWith({
+    NODE_ENV: "test",
+    PROXY_SERVER: "http://alice:s3cr3t@proxy.example.com:8080",
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(extractEnv(stdout).proxy, {
+    server: "http://proxy.example.com:8080/",
+    username: "alice",
+    password: "s3cr3t",
+  });
+});
+
+test("explicit PROXY_USERNAME/PASSWORD override inline creds", async () => {
+  const { code, stdout } = await importEnvWith({
+    NODE_ENV: "test",
+    PROXY_SERVER: "socks5://inline:nope@proxy.example.com:1080",
+    PROXY_USERNAME: "bob",
+    PROXY_PASSWORD: "pw",
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(extractEnv(stdout).proxy, {
+    server: "socks5://proxy.example.com:1080",
+    username: "bob",
+    password: "pw",
+  });
+});
+
+test("invalid PROXY_SERVER scheme fails fast", async () => {
+  const { code, stderr } = await importEnvWith({
+    NODE_ENV: "test",
+    PROXY_SERVER: "proxy.example.com:8080",
+  });
+  assert.equal(code, 1);
+  assert.match(stderr, /PROXY_SERVER/);
 });
 
 test("invalid PORT fails fast with exit code 1", async () => {

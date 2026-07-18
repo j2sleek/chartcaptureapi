@@ -1,7 +1,11 @@
 import type { Page } from "playwright";
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
-import { BotBlockedError, PoolUnavailableError } from "../utils/errors.js";
+import {
+  BotBlockedError,
+  PoolUnavailableError,
+  UnknownResourceError,
+} from "../utils/errors.js";
 import { browserManager } from "./browserManager.js";
 import { waitForWidgetReady } from "./tradingview.js";
 
@@ -42,9 +46,12 @@ function warmupUrl(metricPath: string): string {
 
 /**
  * Navigate a page to a Coinalyze metric URL and assert we actually landed on
- * the chart page (not an anti-bot block). Throws {@link BotBlockedError} on a
- * 4xx/5xx document response or a recognised challenge interstitial, so the
- * cause is unambiguous in logs instead of surfacing as a widget timeout.
+ * the chart page. Distinguishes three failure modes so logs are unambiguous
+ * instead of all surfacing as a widget timeout:
+ *   - 404 → the metric path doesn't exist upstream (deterministic;
+ *     {@link UnknownResourceError}, not retried).
+ *   - other 4xx/5xx or a challenge interstitial → an IP/anti-bot block
+ *     ({@link BotBlockedError}).
  */
 async function navigateToMetric(page: Page, metricPath: string): Promise<void> {
   const url = warmupUrl(metricPath);
@@ -54,6 +61,11 @@ async function navigateToMetric(page: Page, metricPath: string): Promise<void> {
   });
 
   const status = response?.status();
+  if (status === 404) {
+    throw new UnknownResourceError(
+      `Coinalyze has no page at ${metricPath} (HTTP 404).`,
+    );
+  }
   if (status !== undefined && status >= 400) {
     throw new BotBlockedError(
       `Upstream returned HTTP ${status} for ${metricPath} (likely an IP/anti-bot block).`,

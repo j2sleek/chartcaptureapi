@@ -98,6 +98,28 @@ const EnvSchema = z.object({
     ),
   LOCALE: z.string().min(1).default("en-US"),
   TIMEZONE: z.string().min(1).default("America/New_York"),
+
+  /**
+   * Optional outbound proxy for the headless browser. Set this to route
+   * Coinalyze traffic through a residential/ISP proxy when datacenter-IP
+   * reputation triggers the anti-bot block. Empty (default) => direct egress.
+   *
+   * Accepts a full URL, optionally with inline credentials:
+   *   http://user:pass@host:port  |  http://host:port  |  socks5://host:port
+   * Credentials may instead be supplied via PROXY_USERNAME / PROXY_PASSWORD.
+   */
+  PROXY_SERVER: z
+    .string()
+    .trim()
+    .default("")
+    .refine(
+      (value) => value === "" || /^(https?|socks[45]?):\/\//i.test(value),
+      { message: "PROXY_SERVER must be an http(s):// or socks:// URL" },
+    ),
+  PROXY_USERNAME: z.string().default(""),
+  PROXY_PASSWORD: z.string().default(""),
+  /** Comma-separated hosts that bypass the proxy, e.g. "localhost,127.0.0.1". */
+  PROXY_BYPASS: z.string().default(""),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -135,3 +157,49 @@ export const env: Env = loadEnv();
 
 export const isProduction = env.NODE_ENV === "production";
 export const authEnabled = env.API_KEYS.length > 0;
+
+/** Playwright `launch`/`newContext` proxy option shape. */
+export interface ProxyConfig {
+  server: string;
+  username?: string;
+  password?: string;
+  bypass?: string;
+}
+
+/**
+ * Resolve the configured proxy into Playwright's proxy option, or `undefined`
+ * when no proxy is set (direct egress). Inline URL credentials are honoured;
+ * PROXY_USERNAME/PROXY_PASSWORD override them when both are present.
+ */
+export function resolveProxy(): ProxyConfig | undefined {
+  if (!env.PROXY_SERVER) return undefined;
+
+  // Playwright wants the server URL WITHOUT credentials and the creds in
+  // separate fields, so always split them out. Explicit PROXY_USERNAME/
+  // PROXY_PASSWORD take precedence over anything embedded in the URL.
+  let server = env.PROXY_SERVER;
+  let inlineUser = "";
+  let inlinePass = "";
+  try {
+    const url = new URL(env.PROXY_SERVER);
+    inlineUser = url.username ? decodeURIComponent(url.username) : "";
+    inlinePass = url.password ? decodeURIComponent(url.password) : "";
+    if (url.username || url.password) {
+      url.username = "";
+      url.password = "";
+      server = url.toString();
+    }
+  } catch {
+    /* refine() already validated the scheme; ignore parse edge cases */
+  }
+
+  const config: ProxyConfig = { server };
+  const username = env.PROXY_USERNAME || inlineUser;
+  const password = env.PROXY_PASSWORD || inlinePass;
+  if (username) config.username = username;
+  if (password) config.password = password;
+  if (env.PROXY_BYPASS) config.bypass = env.PROXY_BYPASS;
+  return config;
+}
+
+export const proxyConfig = resolveProxy();

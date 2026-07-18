@@ -80,6 +80,9 @@ exits with a clear message if anything is invalid). See `.env.example`.
 | `COINALYZE_BASE` | `https://coinalyze.net` | Base URL |
 | `WARMUP_PATH` | `/bitcoin/open-interest/` | Page used to warm the pool |
 | `USER_AGENT` / `LOCALE` / `TIMEZONE` | _(realistic defaults)_ | Browser fingerprint |
+| `PROXY_SERVER` | _(empty)_ | Outbound proxy URL for the browser, e.g. `http://user:pass@host:port` or `socks5://host:port`. Empty ⇒ direct egress. Use a residential/ISP proxy if Coinalyze's anti-bot blocks the datacenter IP |
+| `PROXY_USERNAME` / `PROXY_PASSWORD` | _(empty)_ | Proxy credentials (override any embedded in `PROXY_SERVER`) |
+| `PROXY_BYPASS` | _(empty)_ | Comma-separated hosts that skip the proxy |
 
 ---
 
@@ -110,7 +113,7 @@ Request body (all fields optional; defaults shown):
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `symbol` | string | `bitcoin` | Friendly slug (`bitcoin`, `btc`, `ethereum`, …) or a raw widget symbol (`BTC_AVGPRICE`) |
-| `metric` | string | `open-interest` | `open-interest`, `funding-rate`, `liquidations`, `long-short-ratio`, `predicted-funding-rate`, `basis` |
+| `metric` | string | `open-interest` | `open-interest`, `funding-rate`, `liquidations`, `long-short-ratio`, `basis` |
 | `timeframe` | string | `1D` | `1,5,15,30,60,120,240,360,720,1D,1W,1M` or aliases `1m,5m,15m,30m,1h,2h,4h,6h,12h,1d,daily,1w,weekly,1mo,monthly` |
 | `indicators` | array | `[]` | Up to 10; each `{ name, inputs?, overlay? }` |
 | `width` / `height` | int | `1280` / `800` | 320–3840 / 200–2160 |

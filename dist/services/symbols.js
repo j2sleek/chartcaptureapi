@@ -43,13 +43,17 @@ const TICKER_TO_PAGE_SLUG = {
     AVAX: "avalanche",
     LINK: "chainlink",
 };
-/** Metric segments Coinalyze exposes as chart pages. */
+/**
+ * Metric segments Coinalyze exposes as their own chart pages. Verified live
+ * (2026-07-18) against the site nav. NOTE: "predicted-funding-rate" is NOT a
+ * page — it's a data point on the funding-rate page and 404s as a path — so it
+ * is deliberately excluded.
+ */
 const KNOWN_METRICS = new Set([
     "open-interest",
     "funding-rate",
     "liquidations",
     "long-short-ratio",
-    "predicted-funding-rate",
     "basis",
 ]);
 function normalizeMetric(metric) {
