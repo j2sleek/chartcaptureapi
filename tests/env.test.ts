@@ -34,6 +34,8 @@ async function importEnvWith(
       isProduction: m.isProduction,
       keys: m.env.API_KEYS,
       proxy: m.proxyConfig ?? null,
+      widgetTimeout: m.env.WIDGET_TIMEOUT,
+      captureTimeout: m.env.CAPTURE_TIMEOUT,
     }) + "<<<END>>>");
   });`;
 
@@ -64,6 +66,7 @@ test("valid environment loads with defaults", async () => {
   assert.equal(parsed.concurrency, 3);
   assert.equal(parsed.authEnabled, false);
   assert.equal(parsed.isProduction, false);
+  assert.equal(parsed.widgetTimeout, 15000);
 });
 
 test("API_KEYS is parsed as a trimmed CSV and enables auth", async () => {
@@ -130,6 +133,27 @@ test("invalid PROXY_SERVER scheme fails fast", async () => {
   });
   assert.equal(code, 1);
   assert.match(stderr, /PROXY_SERVER/);
+});
+
+test("WIDGET_TIMEOUT is clamped to half of CAPTURE_TIMEOUT", async () => {
+  const { code, stdout } = await importEnvWith({
+    NODE_ENV: "test",
+    CAPTURE_TIMEOUT: "30000",
+    WIDGET_TIMEOUT: "40000",
+  });
+  assert.equal(code, 0);
+  const parsed = extractEnv(stdout);
+  assert.equal(parsed.widgetTimeout, 15000);
+});
+
+test("WIDGET_TIMEOUT under half-budget is left untouched", async () => {
+  const { code, stdout } = await importEnvWith({
+    NODE_ENV: "test",
+    CAPTURE_TIMEOUT: "30000",
+    WIDGET_TIMEOUT: "12000",
+  });
+  assert.equal(code, 0);
+  assert.equal(extractEnv(stdout).widgetTimeout, 12000);
 });
 
 test("invalid PORT fails fast with exit code 1", async () => {

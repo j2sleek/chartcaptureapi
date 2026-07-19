@@ -55,8 +55,15 @@ const EnvSchema = z.object({
   /** Page navigation timeout in ms (cold load past the anti-bot gate). */
   NAV_TIMEOUT: z.coerce.number().int().min(1000).max(120000).default(60000),
 
-  /** Time to wait for the TradingView widget/chart to become ready, ms. */
-  WIDGET_TIMEOUT: z.coerce.number().int().min(1000).max(60000).default(40000),
+  /**
+   * Time to wait for the TradingView widget/chart to become ready, ms. Kept
+   * WELL UNDER half of CAPTURE_TIMEOUT so a stuck/blocked attempt gives up in
+   * time for the automatic retry to also run within the request budget — a
+   * warm page normally readies in ~5s. If this exceeds CAPTURE_TIMEOUT the
+   * first attempt alone blows the budget and the retry runs orphaned after the
+   * client already 504s (guarded in loadEnv()).
+   */
+  WIDGET_TIMEOUT: z.coerce.number().int().min(1000).max(60000).default(15000),
 
   /** Settle time after mutations before screenshotting, ms. */
   RENDER_SETTLE_MS: z.coerce.number().int().min(0).max(10000).default(1200),
@@ -148,6 +155,21 @@ function loadEnv(): Env {
         `(${value.PAGE_POOL_SIZE}); clamping concurrency to ${value.PAGE_POOL_SIZE}.`,
     );
     value.CAPTURE_CONCURRENCY = value.PAGE_POOL_SIZE;
+  }
+
+  // Cross-field sanity: the widget wait must leave room for the automatic
+  // retry inside one request budget. If WIDGET_TIMEOUT is too large the first
+  // attempt alone overruns CAPTURE_TIMEOUT and the retry runs orphaned after
+  // the client 504s — the exact failure seen in prod. Clamp to half-budget.
+  const maxWidgetTimeout = Math.floor(value.CAPTURE_TIMEOUT / 2);
+  if (value.WIDGET_TIMEOUT > maxWidgetTimeout) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `WIDGET_TIMEOUT (${value.WIDGET_TIMEOUT}) > half of CAPTURE_TIMEOUT ` +
+        `(${value.CAPTURE_TIMEOUT}); clamping to ${maxWidgetTimeout} so the ` +
+        `retry can run within budget.`,
+    );
+    value.WIDGET_TIMEOUT = maxWidgetTimeout;
   }
 
   return value;

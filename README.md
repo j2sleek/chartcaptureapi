@@ -70,7 +70,7 @@ exits with a clear message if anything is invalid). See `.env.example`.
 | `PAGE_MAX_USES` | `200` | Recycle a page after this many captures |
 | `CAPTURE_TIMEOUT` | `30000` | Per-capture budget (ms) |
 | `NAV_TIMEOUT` | `60000` | Cold page-load timeout (ms) |
-| `WIDGET_TIMEOUT` | `40000` | Wait for widget/chart readiness (ms) |
+| `WIDGET_TIMEOUT` | `15000` | Wait for widget/chart readiness (ms). Auto-clamped to ≤ half of `CAPTURE_TIMEOUT` so the retry fits in budget |
 | `RENDER_SETTLE_MS` | `1200` | Settle time after mutations before screenshot (ms) |
 | `MAX_BATCH` | `20` | Max items per batch request |
 | `API_KEYS` | _(empty)_ | Comma-separated keys. **Empty ⇒ auth disabled** |
