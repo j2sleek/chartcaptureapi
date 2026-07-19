@@ -48,17 +48,19 @@ const TICKER_TO_PAGE_SLUG: Record<string, string> = {
 };
 
 /**
- * Metric segments Coinalyze exposes as their own chart pages. Verified live
- * (2026-07-18) against the site nav. NOTE: "predicted-funding-rate" is NOT a
- * page — it's a data point on the funding-rate page and 404s as a path — so it
- * is deliberately excluded.
+ * Metric segments Coinalyze renders with the TradingView widget we screenshot.
+ * Verified live (2026-07-19). Two deliberate exclusions:
+ *   - "predicted-funding-rate": not a page at all — a data point on the
+ *     funding-rate page; the path 404s.
+ *   - "basis": exists (HTTP 200) but is a Highcharts-only page with NO
+ *     TradingView widget (no window.chartWidget), so widget capture can never
+ *     succeed there and would just time out.
  */
 const KNOWN_METRICS = new Set([
   "open-interest",
   "funding-rate",
   "liquidations",
   "long-short-ratio",
-  "basis",
 ]);
 
 export interface ResolvedTarget {
